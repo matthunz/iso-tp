@@ -15,7 +15,7 @@ pub enum FlowKind {
     Abort,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Frame {
     bytes: [u8; 8],
 }

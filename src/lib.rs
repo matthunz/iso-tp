@@ -1,6 +1,7 @@
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 
 pub mod frame;
+use async_hal::io::AsyncRead;
 pub use frame::Frame;
 use frame::{FlowKind, Kind};
 use futures::{Sink, SinkExt, Stream, StreamExt};
@@ -36,11 +37,19 @@ impl<T, R> Consecutive<'_, T, R> {
     }
 }
 
-impl<T, R> Consecutive<'_, T, R> {}
-
 pub enum Transaction<'a, T, R> {
     Single { frame: Frame },
     Consecutive(Consecutive<'a, T, R>),
+}
+
+impl< T, R> Transaction<'_, T, R> {
+    pub fn single(self) -> Option<Frame> {
+        if let Self::Single { frame } = self {
+            Some(frame)
+        } else {
+            None
+        }
+    }
 }
 
 pub struct Transport<T, R> {
@@ -49,6 +58,10 @@ pub struct Transport<T, R> {
 }
 
 impl<T, R> Transport<T, R> {
+    pub fn new(tx: T, rx: R) -> Self {
+        Self { tx, rx }
+    }
+
     pub async fn transaction(&mut self) -> Transaction<T, R>
     where
         R: Stream<Item = Frame> + Unpin,
@@ -65,17 +78,20 @@ impl<T, R> Transport<T, R> {
     }
 }
 
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
 
 #[cfg(test)]
 mod tests {
+    use futures::stream;
     use super::*;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+    #[tokio::test]
+    async fn it_works() {
+        let tx: Vec<Frame> = vec![];
+        let rx = stream::iter( vec![Frame::single(b"hello").unwrap()]);
+
+        let mut tp = Transport::new(tx, rx);
+        let transaction = tp.transaction().await;
+        assert_eq!(transaction.single(), Some(Frame::single(b"hello").unwrap()));
+
     }
 }
