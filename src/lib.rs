@@ -152,6 +152,32 @@ impl<'a, T, R> Transaction<'a, T, R> {
             None
         }
     }
+
+    pub async fn read(self, buf: &mut [u8], block_len: u8, st: u8)
+    where
+        T: Sink<Frame> + Unpin,
+        R: Stream<Item = Frame> + Unpin,
+    {
+        match self {
+            Self::Single { frame } => {
+                let data = frame.single_data();
+                buf[..data.len()].copy_from_slice(data);
+            }
+            Self::Consecutive(consecutive) => {
+                let mut reader = consecutive.accept(block_len, st).await;
+                let mut pos = 0;
+                loop {
+                    let used = reader.read(&mut buf[pos..]).await.unwrap();
+                    if used == 0 {
+                        if !reader.resume(block_len, st).await {
+                            return;
+                        }
+                    }
+                    pos += used;
+                }
+            }
+        }
+    }
 }
 
 pub struct Transport<T, R> {
@@ -212,6 +238,25 @@ mod tests {
         let mut buf = [0; 12];
         let used = reader.read(&mut buf).await.unwrap();
         reader.read(&mut buf[used..]).await.unwrap();
+
+        assert_eq!(&buf, bytes);
+    }
+
+    #[tokio::test]
+    async fn it_reads_consecutive_frames_high_level() {
+        let tx: Vec<Frame> = vec![];
+
+        let bytes = b"Hello World!";
+        let (first, used) = Frame::first(bytes);
+        let (cons, _) = Frame::consecutive(0, &bytes[used..]);
+
+        let rx = stream::iter(vec![first, cons]);
+
+        let mut tp = Transport::new(tx, rx);
+        let transaction = tp.transaction().await;
+
+        let mut buf = [0; 12];
+        transaction.read(&mut buf, 10, 0).await;
 
         assert_eq!(&buf, bytes);
     }
