@@ -115,7 +115,7 @@ where
                             // Wait for the next frame from `rx`
                             let frame = ready!(me.socket.rx.poll_next_unpin(cx))
                                 .ok_or(Error::UnexpectedEOF)?
-                                .map_err(|e| Error::Receive(e))?;
+                                .map_err(Error::Receive)?;
 
                             // Make sure the frame is control flow
                             if frame.kind() != Some(Kind::Flow) {
@@ -125,7 +125,15 @@ where
                             // Handle control flow kinds
                             match frame.flow_kind() {
                                 FlowKind::Continue => {}
-                                FlowKind::Wait => todo!(),
+                                FlowKind::Wait => {
+                                    // Delay for the received wait time
+                                    me.delay
+                                        .start(frame.flow_st().into())
+                                        .map_err(Error::Delay)?;
+                                    *is_delaying = true;
+
+                                    continue;
+                                }
                                 FlowKind::Abort => {
                                     // Abort this transfer
                                     me.state = State::Empty;
