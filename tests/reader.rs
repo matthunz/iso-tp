@@ -10,14 +10,14 @@ mod tests {
 
         let bytes = b"example";
         let frame = Frame::single(bytes).unwrap();
-        let rx = stream::iter(vec![Ok(frame)]);
+        let rx = stream::iter(vec![Ok::<_, ()>(frame)]);
 
         let mut socket = Socket::new(tx, rx);
         let mut reader = socket.reader();
 
         let mut buf = [0; 7];
-        let used = reader.read(&mut buf).await.unwrap();
-        reader.read(&mut buf[used..]).await.unwrap();
+        let used = reader.read(&mut buf).await.ok().unwrap();
+        reader.read(&mut buf[used..]).await.ok().unwrap();
 
         assert_eq!(&buf, bytes);
     }
@@ -30,14 +30,14 @@ mod tests {
         let (first, used) = Frame::first(bytes);
         let (second, _) = Frame::consecutive(0, &bytes[used..]);
 
-        let rx = stream::iter(vec![Ok(first), Ok(second)]);
+        let rx = stream::iter(vec![Ok::<_, ()>(first), Ok(second)]);
 
         let mut socket = Socket::new(tx, rx);
         let mut reader = socket.reader();
 
         let mut buf = [0; 12];
-        let used = reader.read(&mut buf).await.unwrap();
-        reader.read(&mut buf[used..]).await.unwrap();
+        let used = reader.read(&mut buf).await.ok().unwrap();
+        reader.read(&mut buf[used..]).await.ok().unwrap();
 
         assert_eq!(&buf, bytes);
     }

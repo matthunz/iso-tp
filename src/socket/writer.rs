@@ -1,11 +1,9 @@
-use super::Error;
 use crate::{
     frame::{FlowKind, Kind},
     Frame, Socket,
 };
 use async_hal::{delay::DelayMs, io::AsyncWrite};
 use core::{
-    marker::PhantomData,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -24,23 +22,29 @@ enum State {
     },
 }
 
-/// Writer for an ISO-TP message.
-pub struct Writer<'a, T, R, E, D> {
-    socket: &'a mut Socket<T, R>,
-    delay: D,
-    state: State,
-    _marker: PhantomData<E>,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Error<T, R, D> {
+    Transmit(T),
+    Receive(R),
+    Delay(D),
+    InvalidFrame,
+    Aborted,
+    UnexpectedEOF,
 }
 
-impl<T: Unpin, R: Unpin, E, D> Unpin for Writer<'_, T, R, E, D> {}
+/// Writer for an ISO-TP message.
+pub struct Writer<'a, T, R, E, D> {
+    socket: &'a mut Socket<T, R, E>,
+    delay: D,
+    state: State,
+}
 
 impl<'a, T, R, E, D> Writer<'a, T, R, E, D> {
-    pub(crate) fn new(socket: &'a mut Socket<T, R>, delay: D) -> Self {
+    pub(crate) fn new(socket: &'a mut Socket<T, R, E>, delay: D) -> Self {
         Self {
             socket,
             delay,
             state: State::Empty,
-            _marker: PhantomData,
         }
     }
 }

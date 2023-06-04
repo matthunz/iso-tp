@@ -12,13 +12,13 @@ mod tests {
 
         type Error = ();
 
-        fn start(&mut self, ms: Self::Delay) -> Result<(), Self::Error> {
+        fn start(&mut self, _ms: Self::Delay) -> Result<(), Self::Error> {
             Ok(())
         }
 
         fn poll_delay_ms(
             self: std::pin::Pin<&mut Self>,
-            cx: &mut std::task::Context,
+            _cx: &mut std::task::Context,
         ) -> std::task::Poll<Result<(), Self::Error>> {
             Poll::Ready(Ok(()))
         }

@@ -22,15 +22,24 @@ enum State {
     },
 }
 
-pub struct Reader<'a, T, R> {
-    socket: &'a mut Socket<T, R>,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Error<T, R> {
+    Transmit(T),
+    Receive(R),
+    InvalidFrame,
+    UnknownFrameKind,
+    UnexpectedEOF,
+}
+
+pub struct Reader<'a, T, R, E> {
+    socket: &'a mut Socket<T, R, E>,
     state: State,
     block_len: u8,
     st: u8,
 }
 
-impl<'a, T, R> Reader<'a, T, R> {
-    pub(crate) fn new(socket: &'a mut Socket<T, R>) -> Self {
+impl<'a, T, R, E> Reader<'a, T, R, E> {
+    pub(crate) fn new(socket: &'a mut Socket<T, R, E>) -> Self {
         Self {
             socket,
             state: State::Empty,
@@ -40,12 +49,12 @@ impl<'a, T, R> Reader<'a, T, R> {
     }
 }
 
-impl<T, R> AsyncRead for Reader<'_, T, R>
+impl<T, R, E> AsyncRead for Reader<'_, T, R, E>
 where
     T: Sink<Frame> + Unpin,
-    R: Stream<Item = Result<Frame, ()>> + Unpin,
+    R: Stream<Item = Result<Frame, E>> + Unpin,
 {
-    type Error = ();
+    type Error = Error<T::Error, E>;
 
     fn poll_read(
         mut self: Pin<&mut Self>,
@@ -57,11 +66,10 @@ where
             match &mut me.state {
                 State::Empty => {
                     let frame = ready!(me.socket.rx.poll_next_unpin(cx))
-                        .unwrap()
-                        .ok()
-                        .unwrap();
+                        .ok_or(Error::UnexpectedEOF)?
+                        .map_err(Error::Receive)?;
 
-                    match frame.kind().unwrap() {
+                    match frame.kind().ok_or(Error::UnknownFrameKind)? {
                         Kind::Single => me.state = State::Single { frame: Some(frame) },
                         Kind::First => {
                             let data = frame.first_data();
@@ -74,7 +82,9 @@ where
                             buf[..data.len()].copy_from_slice(data);
                             break Poll::Ready(Ok(data.len()));
                         }
-                        _ => todo!(),
+                        Kind::Consecutive | Kind::Flow => {
+                            break Poll::Ready(Err(Error::InvalidFrame))
+                        }
                     }
                 }
                 State::Single { frame } => {
@@ -100,24 +110,26 @@ where
 
                     while *remaining_frames == 0 {
                         if *is_flushing {
-                            ready!(me.socket.tx.poll_flush_unpin(cx)).ok().unwrap();
+                            ready!(me.socket.tx.poll_flush_unpin(cx)).map_err(Error::Transmit)?;
 
                             *remaining_frames = me.block_len;
                             *is_flushing = false;
                         } else {
-                            ready!(me.socket.tx.poll_ready_unpin(cx)).ok().unwrap();
+                            ready!(me.socket.tx.poll_ready_unpin(cx)).map_err(Error::Transmit)?;
                             let frame = Frame::flow(FlowKind::Continue, me.block_len, me.st);
-                            me.socket.tx.start_send_unpin(frame).ok().unwrap();
+                            me.socket
+                                .tx
+                                .start_send_unpin(frame)
+                                .map_err(Error::Transmit)?;
                             *is_flushing = true;
                         }
                     }
 
                     let frame = ready!(me.socket.rx.poll_next_unpin(cx))
-                        .unwrap()
-                        .ok()
-                        .unwrap();
-                    if frame.kind().unwrap() != Kind::Consecutive {
-                        todo!()
+                        .ok_or(Error::UnexpectedEOF)?
+                        .map_err(Error::Receive)?;
+                    if frame.kind().ok_or(Error::UnknownFrameKind)? != Kind::Consecutive {
+                        return Poll::Ready(Err(Error::InvalidFrame));
                     }
 
                     let data = frame.consecutive_data();
