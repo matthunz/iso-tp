@@ -7,11 +7,19 @@ mod tests {
     #[tokio::test]
     async fn it_reads_single_frames() {
         let tx: Vec<Frame> = vec![];
-        let rx = stream::iter(vec![Frame::single(b"hello").unwrap()]);
+
+        let bytes = b"example";
+        let frame = Frame::single(bytes).unwrap();
+        let rx = stream::iter(vec![Ok(frame)]);
 
         let mut socket = Socket::new(tx, rx);
-        let transaction = socket.read().await;
-        assert_eq!(transaction.single(), Some(Frame::single(b"hello").unwrap()));
+        let mut reader = socket.reader();
+
+        let mut buf = [0; 7];
+        let used = reader.read(&mut buf).await.unwrap();
+        reader.read(&mut buf[used..]).await.unwrap();
+
+        assert_eq!(&buf, bytes);
     }
 
     #[tokio::test]
@@ -22,10 +30,10 @@ mod tests {
         let (first, used) = Frame::first(bytes);
         let (second, _) = Frame::consecutive(0, &bytes[used..]);
 
-        let rx = stream::iter(vec![first, second]);
+        let rx = stream::iter(vec![Ok(first), Ok(second)]);
 
         let mut socket = Socket::new(tx, rx);
-        let mut reader = socket.reader(10, 0).await;
+        let mut reader = socket.reader();
 
         let mut buf = [0; 12];
         let used = reader.read(&mut buf).await.unwrap();

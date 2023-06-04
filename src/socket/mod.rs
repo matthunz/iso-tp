@@ -1,9 +1,3 @@
-use crate::{frame::Kind, Frame};
-use futures::{Stream, StreamExt};
-
-mod read;
-pub use read::{Consecutive, ConsecutiveReader, Read};
-
 mod reader;
 pub use reader::Reader;
 
@@ -30,24 +24,9 @@ impl<T, R> Socket<T, R> {
         Self { tx, rx }
     }
 
-    pub async fn read(&mut self) -> Read<T, R>
-    where
-        R: Stream<Item = Frame> + Unpin,
-    {
-        let frame = self.rx.next().await.unwrap();
-        match frame.kind().unwrap() {
-            Kind::Single => Read::Single { frame },
-            Kind::First => Read::Consecutive(Consecutive::new(frame, self)),
-            _ => todo!(),
-        }
-    }
-
     /// Create a reader for a new ISO-TP message.
-    pub async fn reader(&mut self, block_len: u8, st: u8) -> Reader<T, R>
-    where
-        R: Stream<Item = Frame> + Unpin,
-    {
-        self.read().await.reader(block_len, st)
+    pub fn reader(&mut self) -> Reader<T, R> {
+        Reader::new(self)
     }
 
     /// Create a writer for a new ISO-TP message.
