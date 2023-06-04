@@ -47,9 +47,6 @@ where
                 let mut pinned = Pin::new(&mut *consecutive);
                 let used = ready!(pinned.as_mut().poll_read(cx, buf)).ok().unwrap();
 
-                #[cfg(test)]
-                dbg!(&buf, used);
-
                 if used == 0 {
                     if !ready!(pinned.poll_resume(cx, me.block_len, me.st)) {
                         break Poll::Ready(Ok(0));

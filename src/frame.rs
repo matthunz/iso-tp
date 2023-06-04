@@ -121,6 +121,10 @@ impl Frame {
     pub fn flow_len(&self) -> u8 {
         self.bytes[1]
     }
+
+    pub fn flow_st(&self) -> u8 {
+        self.bytes[2]
+    }
 }
 
 impl AsRef<[u8]> for Frame {

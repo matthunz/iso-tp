@@ -1,8 +1,9 @@
+use super::Error;
 use crate::{
     frame::{FlowKind, Kind},
     Frame, Socket,
 };
-use async_hal::io::AsyncWrite;
+use async_hal::{delay::DelayMs, io::AsyncWrite};
 use core::{
     marker::PhantomData,
     pin::Pin,
@@ -10,45 +11,47 @@ use core::{
 };
 use futures::{ready, Sink, SinkExt, Stream, StreamExt};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Error<T, R> {
-    Transmit(T),
-    Receive(R),
-    InvalidFrame,
-    Aborted,
-    UnexpectedEOF,
-}
-
 enum State {
     Empty,
-    Single { frame: Frame },
-    Consecutive { pos: Option<u8>, remaining: u8 },
+    Single {
+        frame: Frame,
+    },
+    Consecutive {
+        pos: Option<u8>,
+        remaining: u8,
+        is_delaying: bool,
+        st: u8,
+    },
 }
 
-pub struct Writer<'a, T, R, E> {
+pub struct Writer<'a, T, R, E, D> {
     socket: &'a mut Socket<T, R>,
+    delay: D,
     state: State,
     _marker: PhantomData<E>,
 }
 
-impl<T: Unpin, R: Unpin, E> Unpin for Writer<'_, T, R, E> {}
+impl<T: Unpin, R: Unpin, E, D> Unpin for Writer<'_, T, R, E, D> {}
 
-impl<'a, T, R, E> Writer<'a, T, R, E> {
-    pub(crate) fn new(socket: &'a mut Socket<T, R>) -> Self {
+impl<'a, T, R, E, D> Writer<'a, T, R, E, D> {
+    pub(crate) fn new(socket: &'a mut Socket<T, R>, delay: D) -> Self {
         Self {
             socket,
+            delay,
             state: State::Empty,
             _marker: PhantomData,
         }
     }
 }
 
-impl<T, R, E> AsyncWrite for Writer<'_, T, R, E>
+impl<T, R, E, D> AsyncWrite for Writer<'_, T, R, E, D>
 where
     T: Sink<Frame> + Unpin,
     R: Stream<Item = Result<Frame, E>> + Unpin,
+    D: DelayMs + Unpin,
+    D::Delay: From<u8>,
 {
-    type Error = Error<T::Error, E>;
+    type Error = Error<T::Error, E, D::Error>;
 
     fn poll_write(
         mut self: Pin<&mut Self>,
@@ -65,6 +68,8 @@ where
                         State::Consecutive {
                             pos: None,
                             remaining: 0,
+                            is_delaying: false,
+                            st: 0,
                         }
                     };
                 }
@@ -80,7 +85,14 @@ where
                 State::Consecutive {
                     ref mut pos,
                     ref mut remaining,
+                    ref mut is_delaying,
+                    ref mut st,
                 } => {
+                    if *is_delaying {
+                        ready!(me.delay.poll_delay_ms_unpin(cx)).map_err(Error::Delay)?;
+                        *is_delaying = false;
+                    }
+
                     if let Some(pos) = pos {
                         if *remaining == 0 {
                             let frame = ready!(me.socket.rx.poll_next_unpin(cx))
@@ -94,10 +106,14 @@ where
                             match frame.flow_kind() {
                                 FlowKind::Continue => {}
                                 FlowKind::Wait => todo!(),
-                                FlowKind::Abort => return Poll::Ready(Err(Error::Aborted)),
+                                FlowKind::Abort => {
+                                    me.state = State::Empty;
+                                    return Poll::Ready(Err(Error::Aborted));
+                                }
                             }
 
                             *remaining = frame.flow_len();
+                            *st = frame.flow_st();
                         }
 
                         let (frame, used) = Frame::consecutive(*pos, buf);
@@ -109,6 +125,9 @@ where
 
                         *pos += 1;
                         *remaining -= 1;
+
+                        me.delay.start(st.clone().into()).map_err(Error::Delay)?;
+                        *is_delaying = true;
 
                         break Poll::Ready(Ok(used));
                     } else {

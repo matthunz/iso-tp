@@ -1,8 +1,29 @@
 #[cfg(feature = "socket")]
 mod tests {
-    use async_hal::io::AsyncWrite;
+    use std::task::Poll;
+    use async_hal::{io::AsyncWrite, delay::DelayMs};
     use futures::{pin_mut, stream};
     use iso_tp::{frame::FlowKind, Frame, Socket};
+
+    struct MockDelay;
+
+    impl DelayMs for MockDelay {
+        type Delay = u8;
+
+        type Error = ();
+
+        fn start(&mut self, ms: Self::Delay) -> Result<(), Self::Error> {
+            Ok(())
+        }
+
+        fn poll_delay_ms(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context) -> std::task::Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn cancel(&mut self) -> Result<(), Self::Error> {
+            Ok(())
+        }
+    }
 
     #[tokio::test]
     async fn it_writes_single_frames() {
@@ -10,7 +31,7 @@ mod tests {
         let rx = stream::iter(Vec::<Result<_, ()>>::new());
 
         let mut socket = Socket::new(tx, rx);
-        let writer = socket.writer();
+        let writer = socket.writer(MockDelay);
         pin_mut!(writer);
 
         let buf = b"hello";
@@ -25,7 +46,7 @@ mod tests {
         let rx = stream::iter(vec![Ok::<_, ()>(Frame::flow(FlowKind::Continue, 10, 0))]);
 
         let mut socket = Socket::new(tx, rx);
-        let writer = socket.writer();
+        let writer = socket.writer(MockDelay);
         pin_mut!(writer);
 
         let buf = b"Hello World!";

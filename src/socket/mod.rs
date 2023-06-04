@@ -1,5 +1,4 @@
 use crate::{frame::Kind, Frame};
-
 use futures::{Stream, StreamExt};
 
 mod read;
@@ -10,6 +9,16 @@ pub use reader::Reader;
 
 pub mod writer;
 pub use writer::Writer;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Error<T, R, D> {
+    Transmit(T),
+    Receive(R),
+    Delay(D),
+    InvalidFrame,
+    Aborted,
+    UnexpectedEOF,
+}
 
 pub struct Socket<T, R> {
     pub tx: T,
@@ -40,7 +49,7 @@ impl<T, R> Socket<T, R> {
         self.read().await.reader(block_len, st)
     }
 
-    pub fn writer<E>(&mut self) -> Writer<T, R, E> {
-        Writer::new(self)
+    pub fn writer<E, D>(&mut self, delay: D) -> Writer<T, R, E, D> {
+        Writer::new(self, delay)
     }
 }
