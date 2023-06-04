@@ -14,7 +14,7 @@ use futures::{ready, Sink, SinkExt, Stream, StreamExt};
 enum State {
     Empty,
     Single {
-        frame: Frame,
+        frame: Option<Frame>,
     },
     Consecutive {
         pos: Option<u8>,
@@ -24,6 +24,7 @@ enum State {
     },
 }
 
+/// Writer for an ISO-TP message.
 pub struct Writer<'a, T, R, E, D> {
     socket: &'a mut Socket<T, R>,
     delay: D,
@@ -60,10 +61,11 @@ where
     ) -> Poll<Result<usize, Self::Error>> {
         let me = &mut *self;
         loop {
-            match me.state {
+            match &mut me.state {
                 State::Empty => {
+                    // Start a new transfer
                     me.state = if let Some(frame) = Frame::single(buf) {
-                        State::Single { frame }
+                        State::Single { frame: Some(frame) }
                     } else {
                         State::Consecutive {
                             pos: None,
@@ -73,40 +75,59 @@ where
                         }
                     };
                 }
-                State::Single { ref frame } => {
+                State::Single { frame } => {
+                    if frame.is_none() {
+                        // This transfer is already finished
+                        break Poll::Ready(Ok(0));
+                    }
+
+                    // Send a single frame
                     ready!(me.socket.tx.poll_ready_unpin(cx)).map_err(Error::Transmit)?;
+
+                    // Take the current frame so it can only be written once
+                    let frame = frame.take().unwrap();
                     me.socket
                         .tx
-                        .start_send_unpin(frame.clone())
+                        .start_send_unpin(frame)
                         .map_err(Error::Transmit)?;
+
+                    // Reset the current state
                     me.state = State::Empty;
+
+                    // Return the total len of `buf`
                     break Poll::Ready(Ok(buf.len()));
                 }
                 State::Consecutive {
-                    ref mut pos,
-                    ref mut remaining,
-                    ref mut is_delaying,
-                    ref mut st,
+                    pos,
+                    remaining,
+                    is_delaying,
+                    st,
                 } => {
+                    // Poll the current delay if it's in progress
                     if *is_delaying {
                         ready!(me.delay.poll_delay_ms_unpin(cx)).map_err(Error::Delay)?;
                         *is_delaying = false;
                     }
 
                     if let Some(pos) = pos {
+                        // Check if we have any remaining frames left
                         if *remaining == 0 {
+                            // Wait for the next frame from `rx`
                             let frame = ready!(me.socket.rx.poll_next_unpin(cx))
                                 .ok_or(Error::UnexpectedEOF)?
                                 .map_err(|e| Error::Receive(e))?;
 
+                            // Make sure the frame is control flow
                             if frame.kind() != Some(Kind::Flow) {
                                 return Poll::Ready(Err(Error::InvalidFrame));
                             }
 
+                            // Handle control flow kinds
                             match frame.flow_kind() {
                                 FlowKind::Continue => {}
                                 FlowKind::Wait => todo!(),
                                 FlowKind::Abort => {
+                                    // Abort this transfer
                                     me.state = State::Empty;
                                     return Poll::Ready(Err(Error::Aborted));
                                 }
@@ -116,27 +137,23 @@ where
                             *st = frame.flow_st();
                         }
 
+                        // Send a consecutive frame for the current transfer in progress
                         let (frame, used) = Frame::consecutive(*pos, buf);
-                        ready!(me.socket.tx.poll_ready_unpin(cx)).map_err(Error::Transmit)?;
-                        me.socket
-                            .tx
-                            .start_send_unpin(frame)
-                            .map_err(Error::Transmit)?;
+                        ready!(poll_send(cx, &mut me.socket.tx, frame))?;
 
+                        // Prepare the state for the next frame
                         *pos += 1;
                         *remaining -= 1;
 
+                        // Delay for the received seperation time
                         me.delay.start(st.clone().into()).map_err(Error::Delay)?;
                         *is_delaying = true;
 
                         break Poll::Ready(Ok(used));
                     } else {
+                        // Send the first frame of this sequence
                         let (frame, used) = Frame::first(buf);
-                        ready!(me.socket.tx.poll_ready_unpin(cx)).map_err(Error::Transmit)?;
-                        me.socket
-                            .tx
-                            .start_send_unpin(frame)
-                            .map_err(Error::Transmit)?;
+                        ready!(poll_send(cx, &mut me.socket.tx, frame))?;
 
                         *pos = Some(0);
                         break Poll::Ready(Ok(used));
@@ -149,4 +166,18 @@ where
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
         self.socket.tx.poll_flush_unpin(cx).map_err(Error::Transmit)
     }
+}
+
+fn poll_send<S, R, D>(
+    cx: &mut Context,
+    tx: &mut S,
+    frame: Frame,
+) -> Poll<Result<(), Error<S::Error, R, D>>>
+where
+    S: Sink<Frame> + Unpin,
+{
+    ready!(tx.poll_ready_unpin(cx)).map_err(Error::Transmit)?;
+    tx.start_send_unpin(frame).map_err(Error::Transmit)?;
+
+    Poll::Ready(Ok(()))
 }

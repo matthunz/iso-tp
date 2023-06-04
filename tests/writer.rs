@@ -1,9 +1,9 @@
 #[cfg(feature = "socket")]
 mod tests {
-    use std::task::Poll;
-    use async_hal::{io::AsyncWrite, delay::DelayMs};
+    use async_hal::{delay::DelayMs, io::AsyncWrite};
     use futures::{pin_mut, stream};
     use iso_tp::{frame::FlowKind, Frame, Socket};
+    use std::task::Poll;
 
     struct MockDelay;
 
@@ -16,7 +16,10 @@ mod tests {
             Ok(())
         }
 
-        fn poll_delay_ms(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context) -> std::task::Poll<Result<(), Self::Error>> {
+        fn poll_delay_ms(
+            self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context,
+        ) -> std::task::Poll<Result<(), Self::Error>> {
             Poll::Ready(Ok(()))
         }
 

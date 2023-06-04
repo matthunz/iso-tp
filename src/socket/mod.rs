@@ -42,6 +42,7 @@ impl<T, R> Socket<T, R> {
         }
     }
 
+    /// Create a reader for a new ISO-TP message.
     pub async fn reader(&mut self, block_len: u8, st: u8) -> Reader<T, R>
     where
         R: Stream<Item = Frame> + Unpin,
@@ -49,6 +50,7 @@ impl<T, R> Socket<T, R> {
         self.read().await.reader(block_len, st)
     }
 
+    /// Create a writer for a new ISO-TP message.
     pub fn writer<E, D>(&mut self, delay: D) -> Writer<T, R, E, D> {
         Writer::new(self, delay)
     }

@@ -7,6 +7,7 @@ use core::{
 };
 use futures::{ready, Sink, Stream};
 
+/// Reader for an ISO-TP message.
 pub struct Reader<'a, T, R> {
     read: Read<'a, T, R>,
     block_len: u8,
