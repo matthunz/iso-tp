@@ -9,6 +9,20 @@ use core::{
 };
 use futures::{ready, Sink, SinkExt, Stream, StreamExt};
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Error<T> {
+    Transmit(T),
+    InvalidFrame,
+    Aborted,
+    UnexpectedEOF,
+}
+
+impl<T> From<T> for Error<T> {
+    fn from(value: T) -> Self {
+        Self::Transmit(value)
+    }
+}
+
 enum State {
     Empty,
     Single { frame: Frame },
@@ -34,7 +48,7 @@ where
     T: Sink<Frame> + Unpin,
     R: Stream<Item = Frame> + Unpin,
 {
-    type Error = T::Error;
+    type Error = Error<T::Error>;
 
     fn poll_write(
         mut self: Pin<&mut Self>,
@@ -45,18 +59,18 @@ where
         loop {
             match me.state {
                 State::Empty => {
-                    if let Some(frame) = Frame::single(buf) {
-                        me.state = State::Single { frame };
+                    me.state = if let Some(frame) = Frame::single(buf) {
+                        State::Single { frame }
                     } else {
-                        me.state = State::Consecutive {
+                        State::Consecutive {
                             pos: None,
                             remaining: 0,
-                        };
-                    }
+                        }
+                    };
                 }
                 State::Single { ref frame } => {
-                    ready!(me.socket.tx.poll_ready_unpin(cx)).ok().unwrap();
-                    me.socket.tx.start_send_unpin(frame.clone()).ok().unwrap();
+                    ready!(me.socket.tx.poll_ready_unpin(cx))?;
+                    me.socket.tx.start_send_unpin(frame.clone())?;
                     me.state = State::Empty;
                     break Poll::Ready(Ok(buf.len()));
                 }
@@ -66,23 +80,25 @@ where
                 } => {
                     if let Some(pos) = pos {
                         if *remaining == 0 {
-                            let frame = ready!(me.socket.rx.poll_next_unpin(cx)).unwrap();
+                            let frame = ready!(me.socket.rx.poll_next_unpin(cx))
+                                .ok_or(Error::UnexpectedEOF)?;
+
                             if frame.kind() != Some(Kind::Flow) {
-                                todo!()
+                                return Poll::Ready(Err(Error::InvalidFrame));
                             }
 
                             match frame.flow_kind() {
                                 FlowKind::Continue => {}
                                 FlowKind::Wait => todo!(),
-                                FlowKind::Abort => todo!(),
+                                FlowKind::Abort => return Poll::Ready(Err(Error::Aborted)),
                             }
 
                             *remaining = frame.flow_len();
                         }
 
                         let (frame, used) = Frame::consecutive(*pos, buf);
-                        ready!(me.socket.tx.poll_ready_unpin(cx)).ok().unwrap();
-                        me.socket.tx.start_send_unpin(frame).ok().unwrap();
+                        ready!(me.socket.tx.poll_ready_unpin(cx))?;
+                        me.socket.tx.start_send_unpin(frame)?;
 
                         *pos += 1;
                         *remaining -= 1;
@@ -90,8 +106,8 @@ where
                         break Poll::Ready(Ok(used));
                     } else {
                         let (frame, used) = Frame::first(buf);
-                        ready!(me.socket.tx.poll_ready_unpin(cx)).ok().unwrap();
-                        me.socket.tx.start_send_unpin(frame).ok().unwrap();
+                        ready!(me.socket.tx.poll_ready_unpin(cx))?;
+                        me.socket.tx.start_send_unpin(frame)?;
 
                         *pos = Some(0);
                         break Poll::Ready(Ok(used));
@@ -102,6 +118,6 @@ where
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
-        self.socket.tx.poll_flush_unpin(cx)
+        self.socket.tx.poll_flush_unpin(cx).map_err(Into::into)
     }
 }
