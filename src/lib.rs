@@ -43,7 +43,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn it_writess_single_frames() {
+    async fn it_writes_single_frames() {
         let tx: Vec<Frame> = vec![];
         let rx = stream::iter(Vec::new());
 
@@ -63,7 +63,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn it_writess_consecutive_frames() {
+    async fn it_writes_consecutive_frames() {
         let tx: Vec<Frame> = vec![];
         let rx = stream::iter(vec![Frame::flow(frame::FlowKind::Continue, 10, 0)]);
 

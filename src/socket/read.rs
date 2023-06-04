@@ -70,17 +70,21 @@ impl<'a, T, R> Consecutive<'a, T, R> {
             return Poll::Ready(false);
         }
 
-        if !self.is_flushing {
-            ready!(self.socket.tx.poll_ready_unpin(cx)).ok().unwrap();
+        loop {
+            if !self.is_flushing {
+                ready!(self.socket.tx.poll_ready_unpin(cx)).ok().unwrap();
 
-            let frame = Frame::flow(FlowKind::Continue, block_len, st);
-            self.socket.tx.start_send_unpin(frame).ok().unwrap();
-            self.is_flushing = true;
-        } else {
-            ready!(self.socket.tx.poll_flush_unpin(cx)).ok().unwrap();
+                let frame = Frame::flow(FlowKind::Continue, block_len, st);
+                self.socket.tx.start_send_unpin(frame).ok().unwrap();
+                self.is_flushing = true;
+            } else {
+                ready!(self.socket.tx.poll_flush_unpin(cx)).ok().unwrap();
+                self.is_flushing = false;
+                self.remaining_frames = block_len;
+
+                break Poll::Ready(true);
+            }
         }
-
-        Poll::Ready(true)
     }
 
     pub async fn resume(&mut self, block_len: u8, st: u8) -> bool
