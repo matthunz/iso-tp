@@ -39,7 +39,7 @@ pub struct Reader<'a, T, R, E> {
 }
 
 impl<'a, T, R, E> Reader<'a, T, R, E> {
-    pub(crate) fn new(socket: &'a mut Socket<T, R, E>) -> Self {
+    pub fn new(socket: &'a mut Socket<T, R, E>) -> Self {
         Self {
             socket,
             state: State::Empty,

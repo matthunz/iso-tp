@@ -40,7 +40,7 @@ pub struct Writer<'a, T, R, E, D> {
 }
 
 impl<'a, T, R, E, D> Writer<'a, T, R, E, D> {
-    pub(crate) fn new(socket: &'a mut Socket<T, R, E>, delay: D) -> Self {
+    pub fn new(socket: &'a mut Socket<T, R, E>, delay: D) -> Self {
         Self {
             socket,
             delay,
