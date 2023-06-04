@@ -98,7 +98,6 @@ impl Frame {
     }
 
     pub fn consecutive_data(&self) -> &[u8] {
-      
         &self.bytes[1..]
     }
 
