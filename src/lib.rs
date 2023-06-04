@@ -5,6 +5,3 @@ pub use frame::Frame;
 
 pub mod socket;
 pub use socket::Socket;
-
-#[cfg(test)]
-mod tests {}

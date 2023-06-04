@@ -1,5 +1,5 @@
 use async_hal::io::AsyncWrite;
-use futures::{future::poll_fn, pin_mut, stream};
+use futures::{pin_mut, stream};
 use iso_tp::{frame::FlowKind, Frame, Socket};
 
 #[tokio::test]
