@@ -1,10 +1,10 @@
 [package]
 name = "iso-tp"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Async ISO-TP (ISO 15765-2) implementation for embedded devices"
-repository = "https://github.com/matthunz/async-hal"
+repository = "https://github.com/matthunz/iso-tp"
 
 [features]
 socket = ["async-hal", "futures"]
