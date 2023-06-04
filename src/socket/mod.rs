@@ -40,7 +40,7 @@ impl<T, R> Socket<T, R> {
         self.read().await.reader(block_len, st)
     }
 
-    pub fn writer(&mut self) -> Writer<T, R> {
+    pub fn writer<E>(&mut self) -> Writer<T, R, E> {
         Writer::new(self)
     }
 }

@@ -7,7 +7,7 @@ mod tests {
     #[tokio::test]
     async fn it_writes_single_frames() {
         let tx: Vec<Frame> = vec![];
-        let rx = stream::iter(Vec::new());
+        let rx = stream::iter(Vec::<Result<_, ()>>::new());
 
         let mut socket = Socket::new(tx, rx);
         let writer = socket.writer();
@@ -22,7 +22,7 @@ mod tests {
     #[tokio::test]
     async fn it_writes_consecutive_frames() {
         let tx: Vec<Frame> = vec![];
-        let rx = stream::iter(vec![Frame::flow(FlowKind::Continue, 10, 0)]);
+        let rx = stream::iter(vec![Ok::<_, ()>(Frame::flow(FlowKind::Continue, 10, 0))]);
 
         let mut socket = Socket::new(tx, rx);
         let writer = socket.writer();
