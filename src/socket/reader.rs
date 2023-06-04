@@ -47,6 +47,14 @@ impl<'a, T, R, E> Reader<'a, T, R, E> {
             st: 0,
         }
     }
+
+    pub async fn abort(self) -> Result<(), T::Error>
+    where
+        T: Sink<Frame> + Unpin,
+    {
+        let frame = Frame::flow(FlowKind::Abort, 0, 0);
+        self.socket.tx.send(frame).await
+    }
 }
 
 impl<T, R, E> AsyncRead for Reader<'_, T, R, E>
