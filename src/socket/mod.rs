@@ -1,4 +1,5 @@
 use crate::{frame::Kind, Frame};
+
 use futures::{Stream, StreamExt};
 
 mod read;
@@ -7,9 +8,12 @@ pub use read::{Consecutive, ConsecutiveReader, Read};
 mod reader;
 pub use reader::Reader;
 
+mod writer;
+pub use writer::Writer;
+
 pub struct Socket<T, R> {
-    tx: T,
-    rx: R,
+    pub tx: T,
+    pub rx: R,
 }
 
 impl<T, R> Socket<T, R> {
@@ -34,5 +38,9 @@ impl<T, R> Socket<T, R> {
         R: Stream<Item = Frame> + Unpin,
     {
         self.read().await.reader(block_len, st)
+    }
+
+    pub fn writer(&mut self) -> Writer<T, R> {
+        Writer::new(self)
     }
 }

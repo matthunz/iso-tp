@@ -49,7 +49,7 @@ where
 
                 if used == 0 {
                     if !ready!(pinned.poll_resume(cx, me.block_len, me.st)) {
-                        return Poll::Ready(Ok(0));
+                        break Poll::Ready(Ok(0));
                     }
                 } else {
                     break Poll::Ready(Ok(used));
