@@ -57,6 +57,7 @@ impl<'a, T, R> Consecutive<'a, T, R> {
             first_frame: frame,
         }
     }
+
     pub fn poll_resume(
         mut self: Pin<&mut Self>,
         cx: &mut Context,
