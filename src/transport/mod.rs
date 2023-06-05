@@ -21,3 +21,5 @@ pub trait Transport<E>: Sink<Frame> + Stream<Item = Result<Frame, E>> + Sized {
         Writer::new(self, delay)
     }
 }
+
+impl<T, E> Transport<E> for T where T: Sink<Frame> + Stream<Item = Result<Frame, E>> {}
