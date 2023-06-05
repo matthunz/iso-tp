@@ -1,13 +1,15 @@
 use crate::{
     frame::{FlowKind, Kind},
-    Frame, Socket,
+    Frame,
 };
 use async_hal::io::AsyncRead;
 use core::{
+    marker::PhantomData,
     pin::Pin,
     task::{Context, Poll},
 };
 use futures::{ready, Sink, SinkExt, Stream, StreamExt};
+use pin_project_lite::pin_project;
 
 enum State {
     Empty,
@@ -31,59 +33,64 @@ pub enum Error<T, R> {
     UnexpectedEOF,
 }
 
-pub struct Reader<'a, T, R, E> {
-    socket: &'a mut Socket<T, R, E>,
-    state: State,
-    block_len: u8,
-    st: u8,
+pin_project! {
+    pub struct Reader<T, E> {
+        #[pin]
+        transport: T,
+
+        state: State,
+        block_len: u8,
+        st: u8,
+        _marker: PhantomData<E>
+    }
 }
 
-impl<'a, T, R, E> Reader<'a, T, R, E> {
+impl<T, E> Reader<T, E> {
     /// Create a new reader from a socket.
-    pub fn new(socket: &'a mut Socket<T, R, E>) -> Self {
+    pub fn new(transport: T) -> Self {
         Self {
-            socket,
+            transport,
             state: State::Empty,
             block_len: 10,
             st: 0,
+            _marker: PhantomData,
         }
     }
 
     /// Abort the current read.
-    pub async fn abort(self) -> Result<(), T::Error>
+    pub async fn abort(mut self) -> Result<(), T::Error>
     where
         T: Sink<Frame> + Unpin,
     {
         let frame = Frame::flow(FlowKind::Abort, 0, 0);
-        self.socket.tx.send(frame).await
+        self.transport.send(frame).await
     }
 }
 
-impl<T, R, E> AsyncRead for Reader<'_, T, R, E>
+impl<T, E> AsyncRead for Reader<T, E>
 where
-    T: Sink<Frame> + Unpin,
-    R: Stream<Item = Result<Frame, E>> + Unpin,
+    T: Sink<Frame> + Stream<Item = Result<Frame, E>>,
 {
     type Error = Error<T::Error, E>;
 
     fn poll_read(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut Context,
         buf: &mut [u8],
     ) -> Poll<Result<usize, Self::Error>> {
-        let me = &mut *self;
+        let mut me = self.project();
         loop {
-            match &mut me.state {
+            match me.state {
                 State::Empty => {
-                    let frame = ready!(me.socket.rx.poll_next_unpin(cx))
+                    let frame = ready!(me.transport.poll_next_unpin(cx))
                         .ok_or(Error::UnexpectedEOF)?
                         .map_err(Error::Receive)?;
 
                     match frame.kind().ok_or(Error::UnknownFrameKind)? {
-                        Kind::Single => me.state = State::Single { frame: Some(frame) },
+                        Kind::Single => *me.state = State::Single { frame: Some(frame) },
                         Kind::First => {
                             let data = frame.first_data();
-                            me.state = State::Consecutive {
+                            *me.state = State::Consecutive {
                                 remaining_bytes: frame.first_len() - data.len() as u16,
                                 remaining_frames: 0,
                                 index: 0,
@@ -120,22 +127,21 @@ where
 
                     while *remaining_frames == 0 {
                         if *is_flushing {
-                            ready!(me.socket.tx.poll_flush_unpin(cx)).map_err(Error::Transmit)?;
+                            ready!(me.transport.poll_flush_unpin(cx)).map_err(Error::Transmit)?;
 
-                            *remaining_frames = me.block_len;
+                            *remaining_frames = *me.block_len;
                             *is_flushing = false;
                         } else {
-                            ready!(me.socket.tx.poll_ready_unpin(cx)).map_err(Error::Transmit)?;
-                            let frame = Frame::flow(FlowKind::Continue, me.block_len, me.st);
-                            me.socket
-                                .tx
+                            ready!(me.transport.poll_ready_unpin(cx)).map_err(Error::Transmit)?;
+                            let frame = Frame::flow(FlowKind::Continue, *me.block_len, *me.st);
+                            me.transport
                                 .start_send_unpin(frame)
                                 .map_err(Error::Transmit)?;
                             *is_flushing = true;
                         }
                     }
 
-                    let frame = ready!(me.socket.rx.poll_next_unpin(cx))
+                    let frame = ready!(me.transport.poll_next_unpin(cx))
                         .ok_or(Error::UnexpectedEOF)?
                         .map_err(Error::Receive)?;
                     if frame.kind().ok_or(Error::UnknownFrameKind)? != Kind::Consecutive {

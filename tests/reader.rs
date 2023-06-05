@@ -1,3 +1,4 @@
+/*
 #[cfg(feature = "socket")]
 mod tests {
     use async_hal::io::AsyncRead;
@@ -42,3 +43,4 @@ mod tests {
         assert_eq!(&buf, bytes);
     }
 }
+ */

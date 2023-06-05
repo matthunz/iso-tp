@@ -1,3 +1,4 @@
+use crate::Frame;
 use async_hal::can::{CanReceive, CanTransmit, Frame as _};
 use core::{
     marker::PhantomData,
@@ -7,10 +8,9 @@ use core::{
 use embedded_hal::can::Id;
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use pin_project_lite::pin_project;
-use crate::Frame;
 
 pin_project! {
-    pub struct Transport<C, E, F> {
+    pub struct Socket<C, E, F> {
         id: Id,
 
         #[pin]
@@ -20,7 +20,7 @@ pin_project! {
 
 }
 
-impl<C, E, F> Transport<C, E, F> {
+impl<C, E, F> Socket<C, E, F> {
     pub fn new(id: impl Into<Id>, can: C) -> Self {
         Self {
             id: id.into(),
@@ -30,7 +30,7 @@ impl<C, E, F> Transport<C, E, F> {
     }
 }
 
-impl<C, E, F> Stream for Transport<C, E, F>
+impl<C, E, F> Stream for Socket<C, E, F>
 where
     C: CanReceive<Error = E>,
 {
@@ -44,7 +44,7 @@ where
     }
 }
 
-impl<C, E, F> Sink<Frame> for Transport<C, E, F>
+impl<C, E, F> Sink<Frame> for Socket<C, E, F>
 where
     C: CanTransmit<F>,
     F: async_hal::can::Frame,

@@ -7,8 +7,8 @@ description = "Async ISO-TP (ISO 15765-2) implementation for embedded devices"
 repository = "https://github.com/matthunz/iso-tp"
 
 [features]
-socket = ["async-hal", "futures"]
-transport = ["async-hal", "embedded-hal", "futures", "pin-project-lite"]
+socket = ["async-hal", "embedded-hal", "futures", "pin-project-lite"]
+transport = ["async-hal", "futures"]
 full = ["socket", "transport"]
 
 [dependencies]
