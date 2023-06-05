@@ -14,7 +14,7 @@ use async_hal::io::AsyncRead;
 use iso_tp::Socket;
 
 let mut socket = Socket::new(tx, rx);
-let mut reader = socket.reader().await;
+let mut reader = socket.reader();
 
 let mut buf = [0; 64];
 reader.read_to_end(&mut buf).await?;
@@ -29,5 +29,6 @@ use iso_tp::Socket;
 
 let mut socket = Socket::new(tx, rx);
 let mut writer = socket.writer();
-socket.write_all(b"Hello World!").await?;
+
+writer.write_all(b"Hello World!").await?;
 ```
