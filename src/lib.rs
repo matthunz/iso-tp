@@ -7,3 +7,8 @@ pub use frame::Frame;
 pub mod socket;
 #[cfg(feature = "socket")]
 pub use socket::Socket;
+
+#[cfg(feature = "transport")]
+mod transport;
+#[cfg(feature = "transport")]
+pub use transport::Transport;
