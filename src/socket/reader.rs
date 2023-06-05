@@ -39,6 +39,7 @@ pub struct Reader<'a, T, R, E> {
 }
 
 impl<'a, T, R, E> Reader<'a, T, R, E> {
+    /// Create a new reader from a socket.
     pub fn new(socket: &'a mut Socket<T, R, E>) -> Self {
         Self {
             socket,
@@ -48,6 +49,7 @@ impl<'a, T, R, E> Reader<'a, T, R, E> {
         }
     }
 
+    /// Abort the current read.
     pub async fn abort(self) -> Result<(), T::Error>
     where
         T: Sink<Frame> + Unpin,
